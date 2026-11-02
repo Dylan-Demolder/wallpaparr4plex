@@ -1,6 +1,13 @@
 from app.messages import enrich_provider_result, generate_message, motion_bake_message, provider_test_message
 
 
+def test_plex_success_and_failure_copy():
+    assert provider_test_message("plex", {"ok": True, "server": "Living Room"}) == "Connected to Plex (Living Room)"
+    assert provider_test_message("plex", {"ok": False, "error": "connection refused"}).startswith(
+        "Could not reach Plex:"
+    )
+
+
 def test_jellyfin_success_and_failure_copy():
     assert provider_test_message("jellyfin", {"ok": True, "server": "Living Room"}) == "Connected to Jellyfin (Living Room)"
     assert provider_test_message("jellyfin", {"ok": False, "error": "connection refused"}).startswith(

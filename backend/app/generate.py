@@ -18,6 +18,7 @@ from app.motion import generate_motion, has_motion, profile_for_wallpaper, profi
 from app.providers import HttpClient
 from app.providers.demo import DemoProvider
 from app.providers.jellyfin import JellyfinProvider
+from app.providers.plex import PlexProvider
 from app.providers.seerr import SeerrProvider
 from app.providers.tmdb import TmdbProvider
 from app.render import render_chrome, render_plate, render_still, save_jpeg, save_png
@@ -27,12 +28,18 @@ from app.skip import matching_records, media_ids_of, records_to_cleanup, should_
 def _providers_from_settings():
     settings = load_settings()
     jf = settings.jellyfin or {}
+    px = settings.plex or {}
     se = settings.jellyseerr or {}
     tm = settings.tmdb or {}
     om = settings.omdb or {}
     return {
         "demo": DemoProvider(),
         "jellyfin": JellyfinProvider(url=jf.get("url") or "", api_key=jf.get("api_key") or "", user_id=jf.get("user_id") or ""),
+        "plex": PlexProvider(
+            url=px.get("url") or "",
+            api_key=px.get("api_key") or "",
+            library_ids=px.get("library_ids") or "",
+        ),
         "jellyseerr": SeerrProvider(
             url=se.get("url") or "",
             api_key=se.get("api_key") or "",
@@ -41,6 +48,16 @@ def _providers_from_settings():
         ),
         "tmdb": TmdbProvider(api_key=tm.get("api_key") or "", language=tm.get("language") or "en-US"),
     }
+
+
+def _provider_label(key: str) -> str:
+    if key == "jellyfin":
+        return "Jellyfin"
+    if key == "plex":
+        return "Plex"
+    if key == "jellyseerr":
+        return "Jellyseerr / Seerr"
+    return key
 
 
 def _list_items(provider, name: str, limit: int, category: str = "trending"):
@@ -66,7 +83,7 @@ def collect_items(
 
     if key == "all":
         items: list[MediaItem] = []
-        for name in ("jellyfin", "jellyseerr", "demo"):
+        for name in ("jellyfin", "plex", "jellyseerr", "demo"):
             provider = providers[name]
             if name != "demo" and not provider.is_configured():
                 continue
@@ -84,7 +101,7 @@ def collect_items(
         items = []
         used_fallback = False
         if key != "demo" and not provider.is_configured():
-            label = "Jellyfin" if key == "jellyfin" else "Jellyseerr / Seerr" if key == "jellyseerr" else key
+            label = _provider_label(key)
             warn(f"{label} is not configured. Using the demo catalog.")
             used_fallback = True
             items = providers["demo"].list_items(limit=limit)
@@ -92,13 +109,13 @@ def collect_items(
             try:
                 items = _list_items(provider, key, limit, seerr_category)
             except Exception as exc:
-                label = "Jellyfin" if key == "jellyfin" else "Jellyseerr / Seerr" if key == "jellyseerr" else key
+                label = _provider_label(key)
                 warn(f"{label} request failed: {exc}. Using the demo catalog.")
                 used_fallback = True
                 items = []
             if not items and key != "demo":
                 if not used_fallback:
-                    label = "Jellyfin" if key == "jellyfin" else "Jellyseerr / Seerr" if key == "jellyseerr" else key
+                    label = _provider_label(key)
                     warn(f"{label} returned no movies or series. Using the demo catalog.")
                 items = providers["demo"].list_items(limit=limit)
     tmdb = providers["tmdb"]
@@ -118,7 +135,7 @@ def _dedupe(items: list[MediaItem]) -> list[MediaItem]:
     seen: set[str] = set()
     out = []
     for item in items:
-        key = item.jellyfin_id or item.tmdb_id or item.imdb_id or f"{item.title}|{item.year}"
+        key = item.jellyfin_id or item.plex_id or item.tmdb_id or item.imdb_id or f"{item.title}|{item.year}"
         if key in seen:
             continue
         seen.add(key)
@@ -128,7 +145,7 @@ def _dedupe(items: list[MediaItem]) -> list[MediaItem]:
 
 def _filename_for(item: MediaItem) -> str:
     slug = "".join(ch if ch.isalnum() else "-" for ch in item.title.lower()).strip("-") or "untitled"
-    raw_id = str(item.jellyfin_id or item.tmdb_id or item.imdb_id or "")
+    raw_id = str(item.jellyfin_id or item.plex_id or item.tmdb_id or item.imdb_id or "")
     suffix = "".join(ch if ch.isalnum() else "-" for ch in raw_id).strip("-") or uuid.uuid4().hex[:8]
     return f"{slug[:40]}-{suffix[:80]}.jpg"
 
@@ -163,6 +180,11 @@ def _headers_for_url(url: str) -> dict[str, str] | None:
     key = jf.get("api_key") or ""
     if base and key and _origin(url) == _origin(base):
         return JellyfinProvider(url=base, api_key=key, user_id=jf.get("user_id") or "").auth_headers()
+    px = settings.plex or {}
+    plex_base = (px.get("url") or "").rstrip("/")
+    plex_key = px.get("api_key") or ""
+    if plex_base and plex_key and _origin(url) == _origin(plex_base):
+        return PlexProvider(url=plex_base, api_key=plex_key).auth_headers()
     return None
 
 
@@ -237,6 +259,7 @@ def resolve_logo_bytes(
     tmdb_id: str | None = None,
     media_type: str = "movie",
     http_get=None,
+    source: str | None = None,
 ) -> bytes | None:
     """Demo fixture, then Jellyfin Logo, then TMDB logos. Never raises."""
     from app.demo_art import logo_bytes
@@ -250,11 +273,14 @@ def resolve_logo_bytes(
         jf = settings.jellyfin or {}
         base = (jf.get("url") or "").rstrip("/")
         key = (jf.get("api_key") or "").strip()
+        is_plex = (source or "").strip().lower() == "plex"
         resolved_tmdb = (tmdb_id or "").strip() or None
-        if not resolved_tmdb and item_id and str(item_id).isdigit():
+        # Plex rating keys are numeric but are not TMDB ids. Never guess.
+        if not resolved_tmdb and not is_plex and item_id and str(item_id).isdigit():
             resolved_tmdb = str(item_id)
+        # Plex has no reliable clearlogo endpoint in the library API; use TMDB.
         # Numeric TMDB ids must not invent a Jellyfin Logo URL (Seerr editor).
-        use_jellyfin = bool(base and key and item_id)
+        use_jellyfin = bool(base and key and item_id and not is_plex)
         if use_jellyfin and resolved_tmdb and str(item_id) == str(resolved_tmdb) and str(item_id).isdigit():
             use_jellyfin = False
         logo_url = f"{base}/Items/{item_id}/Images/Logo" if use_jellyfin else None
@@ -262,9 +288,10 @@ def resolve_logo_bytes(
             title="",
             media_type=kind,
             jellyfin_id=item_id if use_jellyfin else None,
+            plex_id=item_id if is_plex else None,
             tmdb_id=resolved_tmdb,
             logo_url=logo_url,
-            source="jellyfin" if logo_url else "tmdb",
+            source="plex" if is_plex else ("jellyfin" if logo_url else "tmdb"),
         )
         return _fetch_logo(item, http_get=http_get)
     except Exception:
@@ -297,14 +324,18 @@ def _item_from_record(rec) -> MediaItem:
         watch_state=rec.watch_state,
         source=rec.source,
         jellyfin_id=rec.jellyfin_id,
+        plex_id=rec.plex_id,
         tmdb_id=rec.tmdb_id,
         imdb_id=rec.imdb_id,
         action_url=rec.action_url,
+        backdrop_url=rec.backdrop_url,
+        poster_url=rec.poster_url,
+        logo_url=rec.logo_url,
     )
 
 
 def _hydrate_item_art_urls(item: MediaItem) -> MediaItem:
-    """Fill Jellyfin / demo artwork URLs so a later bake can recover the plate.
+    """Fill Jellyfin / Plex / demo artwork URLs so a later bake can recover the plate.
 
     Never treat the composited JPEG as backdrop art — that burns title text into
     the moving layer.
@@ -312,18 +343,29 @@ def _hydrate_item_art_urls(item: MediaItem) -> MediaItem:
     from app.demo_art import attach_demo_art
 
     settings = load_settings()
-    jf = settings.jellyfin or {}
-    base = (jf.get("url") or "").rstrip("/")
-    key = jf.get("api_key") or ""
     updates: dict = {}
-    if base and key and item.jellyfin_id:
-        jf_id = item.jellyfin_id
-        if not item.backdrop_url:
-            updates["backdrop_url"] = f"{base}/Items/{jf_id}/Images/Backdrop?maxWidth=1920"
-        if not item.poster_url:
-            updates["poster_url"] = f"{base}/Items/{jf_id}/Images/Primary?maxHeight=1080"
-        if not item.logo_url:
-            updates["logo_url"] = f"{base}/Items/{jf_id}/Images/Logo"
+    if item.plex_id:
+        px = settings.plex or {}
+        base = (px.get("url") or "").rstrip("/")
+        key = px.get("api_key") or ""
+        if base and key:
+            plex_id = item.plex_id
+            if not item.backdrop_url:
+                updates["backdrop_url"] = f"{base}/library/metadata/{plex_id}/art"
+            if not item.poster_url:
+                updates["poster_url"] = f"{base}/library/metadata/{plex_id}/thumb"
+    elif item.jellyfin_id:
+        jf = settings.jellyfin or {}
+        base = (jf.get("url") or "").rstrip("/")
+        key = jf.get("api_key") or ""
+        if base and key:
+            jf_id = item.jellyfin_id
+            if not item.backdrop_url:
+                updates["backdrop_url"] = f"{base}/Items/{jf_id}/Images/Backdrop?maxWidth=1920"
+            if not item.poster_url:
+                updates["poster_url"] = f"{base}/Items/{jf_id}/Images/Primary?maxHeight=1080"
+            if not item.logo_url:
+                updates["logo_url"] = f"{base}/Items/{jf_id}/Images/Logo"
     if updates:
         item = item.model_copy(update=updates)
     return attach_demo_art(item)
@@ -375,6 +417,7 @@ def generate_one(
         profile = profile_for_wallpaper(
             settings,
             jellyfin_id=item.jellyfin_id,
+            plex_id=item.plex_id,
             tmdb_id=item.tmdb_id,
             imdb_id=item.imdb_id,
             filename=filename,
@@ -410,9 +453,13 @@ def generate_one(
         availability=item.availability,
         source=item.source,
         jellyfin_id=item.jellyfin_id,
+        plex_id=item.plex_id,
         tmdb_id=item.tmdb_id,
         imdb_id=item.imdb_id,
         action_url=item.action_url,
+        backdrop_url=item.backdrop_url,
+        poster_url=item.poster_url,
+        logo_url=item.logo_url,
         overview=item.overview,
         mtime=time.time(),
         has_video=video,
@@ -440,6 +487,7 @@ def run_generate(request: GenerateRequest, http_get=None, job_id: str | None = N
             item
             for item in items
             if (item.jellyfin_id or "").lower() in wanted
+            or (item.plex_id or "").lower() in wanted
             or (item.tmdb_id or "").lower() in wanted
             or (item.imdb_id or "").lower() in wanted
         ]
@@ -581,6 +629,7 @@ def bake_motion(layout: str, filename: str | None = None, job_id: str | None = N
         profile = profile_for_wallpaper(
             settings,
             jellyfin_id=rec.jellyfin_id,
+            plex_id=rec.plex_id,
             tmdb_id=rec.tmdb_id,
             imdb_id=rec.imdb_id,
             filename=rec.filename,

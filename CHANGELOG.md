@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Plex is now a first-class source.** Settings takes a Plex server URL, token, and optional library section ids. Generate/cron can pull `plex`, `all` includes it, and the gallery gets the same watch badges (movie `viewCount`/`viewOffset`, show `viewedLeafCount`/`leafCount`), Plex `art`/`thumb` artwork, skip/replace/cleanup IDs, and `plex://play` deep links. The Projectivy plugin adds a Plex client and passes Plex action URIs through so clicking the wallpaper opens the item's pre-play page.
 - **Cleanup no longer deletes wallpapers from other sources.** Running "Cleanup titles no longer in the source list" for one source (e.g. Jellyfin) was also wiping every Seerr-sourced wallpaper in that layout, and vice versa, because cleanup only scoped by layout, not by the source it actually fetched this run.
 - Cron schedules now default "Refresh when watch / availability changes" on, same as Generate.
 - Settings → Cron / batch has its own "Save settings" button next to "Add cron job", so you don't have to scroll to the bottom of the page after editing schedules.

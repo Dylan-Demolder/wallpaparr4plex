@@ -77,8 +77,8 @@ object WallpaperPickModes {
             "Catalog rows tagged jellyseerr/seerr, random order. Seerr trending sorts by rating instead.",
         ),
         PickMode(
-            "source_plex", "From Plex (catalog tag)", "Source",
-            "Rows tagged plex (demo catalog includes some). Skip unless your suite actually stores Plex sources.",
+            "source_plex", "From Plex", "Source",
+            "Catalog rows pulled from a configured Plex server. Use In library for Plex + Jellyfin together.",
         ),
         PickMode(
             "recent_years", "Recent years", "Source",

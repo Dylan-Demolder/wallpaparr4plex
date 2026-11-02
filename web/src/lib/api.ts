@@ -77,11 +77,15 @@ export const api = {
   options: () => json<Record<string, unknown>>("/api/options"),
   media: (source: string, limit = 12) =>
     json<Array<Record<string, unknown>>>(`/api/media?source=${encodeURIComponent(source)}&limit=${limit}`),
-  mediaArtwork: (itemId: string, kind = "backdrop") =>
-    `/api/media/artwork/${encodeURIComponent(itemId)}?kind=${encodeURIComponent(kind)}`,
-  mediaLogo: (itemId: string, tmdbId?: string | null, mediaType = "movie") => {
+  mediaArtwork: (itemId: string, kind = "backdrop", source?: string) => {
+    const params = new URLSearchParams({ kind });
+    if (source) params.set("source", source);
+    return `/api/media/artwork/${encodeURIComponent(itemId)}?${params.toString()}`;
+  },
+  mediaLogo: (itemId: string, tmdbId?: string | null, mediaType = "movie", source?: string) => {
     const params = new URLSearchParams({ media_type: mediaType });
     if (tmdbId) params.set("tmdb_id", tmdbId);
+    if (source) params.set("source", source);
     return `/api/media/logo/${encodeURIComponent(itemId)}?${params.toString()}`;
   },
   testProvider: (name: string, draft?: Record<string, string>) =>

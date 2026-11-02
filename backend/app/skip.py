@@ -10,7 +10,7 @@ from app.watch import normalize_watch_state
 def media_ids_of(item: MediaItem) -> set[str]:
     return {
         value.lower()
-        for value in (item.jellyfin_id, item.tmdb_id, item.imdb_id)
+        for value in (item.jellyfin_id, item.plex_id, item.tmdb_id, item.imdb_id)
         if value
     }
 

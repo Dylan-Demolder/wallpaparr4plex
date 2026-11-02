@@ -48,6 +48,7 @@ const EMPTY_SETTINGS: AppSettings = {
   overlays: [],
   title_display: "auto",
   jellyfin: {},
+  plex: {},
   jellyseerr: {},
   tmdb: {},
   omdb: {},
@@ -147,7 +148,13 @@ function GeneratePage() {
       .settings()
       .then((loaded) => {
         setSettings(loaded);
-        const preferredSource = loaded.jellyfin?.url ? "jellyfin" : loaded.jellyseerr?.url ? "jellyseerr" : "demo";
+        const preferredSource = loaded.jellyfin?.url
+          ? "jellyfin"
+          : loaded.plex?.url
+            ? "plex"
+            : loaded.jellyseerr?.url
+              ? "jellyseerr"
+              : "demo";
         setForm((f) => ({ ...f, motion: Boolean(loaded.motion_wallpapers), source: preferredSource }));
       })
       .catch(() => undefined);
@@ -174,7 +181,7 @@ function GeneratePage() {
     <section>
       <h1>Generate</h1>
       <p className="lede">
-        Batch cinematic stills from Jellyfin, Jellyseerr, or the built-in demo catalog (NASA / NARA / Library of Congress stills). Skip already-rendered titles by Jellyfin / TMDB / IMDb id, replace them in place, or bake optional parallax VIDEO loops for Projectivy. Layout <code>title_display</code> paints a movie/series logo when one exists.
+        Batch cinematic stills from Jellyfin, Plex, Jellyseerr, or the built-in demo catalog (NASA / NARA / Library of Congress stills). Skip already-rendered titles by Jellyfin / Plex / TMDB / IMDb id, replace them in place, or bake optional parallax VIDEO loops for Projectivy. Layout <code>title_display</code> paints a movie/series logo when one exists.
       </p>
       <div className="generate-grid">
         <div className="card">
@@ -188,6 +195,7 @@ function GeneratePage() {
           <select value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })}>
             <option value="demo">Demo catalog</option>
             <option value="jellyfin">Jellyfin</option>
+            <option value="plex">Plex</option>
             <option value="jellyseerr">Jellyseerr / Seerr</option>
             <option value="all">All configured</option>
           </select>
@@ -218,11 +226,11 @@ function GeneratePage() {
           </button>
           {showAdvanced && (
             <>
-              <label style={{ marginTop: 12 }}>Only these media ids (Jellyfin / TMDB / IMDb, comma-separated)</label>
+              <label style={{ marginTop: 12 }}>Only these media ids (Jellyfin / Plex / TMDB / IMDb, comma-separated)</label>
               <input value={form.ids} onChange={(e) => setForm({ ...form, ids: e.target.value })} placeholder="demo-jf-1, 90001, tt123" />
               <label style={{ marginTop: 12 }}>Skip these media ids</label>
               <input value={form.skip_ids} onChange={(e) => setForm({ ...form, skip_ids: e.target.value })} placeholder="leave blank to skip none extra" />
-              <label style={{ marginTop: 12 }}><input type="checkbox" checked={form.skip_existing} disabled={form.replace_existing} onChange={(e) => setForm({ ...form, skip_existing: e.target.checked })} /> Skip titles already generated (IMDb / TMDB / Jellyfin id)</label>
+              <label style={{ marginTop: 12 }}><input type="checkbox" checked={form.skip_existing} disabled={form.replace_existing} onChange={(e) => setForm({ ...form, skip_existing: e.target.checked })} /> Skip titles already generated (IMDb / TMDB / Jellyfin / Plex id)</label>
               <label><input type="checkbox" checked={form.replace_existing} onChange={(e) => setForm({ ...form, replace_existing: e.target.checked, skip_existing: e.target.checked ? false : form.skip_existing })} /> Replace / overwrite same show</label>
               <label>
                 <input
@@ -323,7 +331,7 @@ function DashboardPage() {
   return (
     <section>
       <h1>Health</h1>
-      <p className="lede">Last cron, gallery size, motion preset, and whether Jellyfin / Seerr keys are configured. Demo mode is always healthy.</p>
+      <p className="lede">Last cron, gallery size, motion preset, and whether Jellyfin / Plex / Seerr keys are configured. Demo mode is always healthy.</p>
       {error && <p className="error">{error}</p>}
       <div className="dash-grid">
         <article className="card">
@@ -355,7 +363,7 @@ function DashboardPage() {
         </article>
       </div>
       <div className="grid two" style={{ marginTop: 16 }}>
-        {["jellyfin", "jellyseerr", "tmdb", "demo"].map((name) => {
+        {["jellyfin", "plex", "jellyseerr", "tmdb", "demo"].map((name) => {
           const row = providers[name] || {};
           return (
             <article className="card" key={name}>
@@ -394,7 +402,7 @@ function SettingsPage({ onTheme }: { onTheme: (theme: string) => void }) {
       setMsg(toast.text);
     }
   }
-  function patch(section: "jellyfin" | "jellyseerr" | "tmdb" | "omdb", key: string, value: string) {
+  function patch(section: "jellyfin" | "plex" | "jellyseerr" | "tmdb" | "omdb", key: string, value: string) {
     setSettings({
       ...settings!,
       [section]: { ...(settings![section] || {}), [key]: value },
@@ -407,7 +415,7 @@ function SettingsPage({ onTheme }: { onTheme: (theme: string) => void }) {
       enabled: false,
       cron: "0 4 * * *",
       layout: layouts[0] || "Netflix Hero",
-      source: "jellyfin",
+      source: settings.jellyfin?.url ? "jellyfin" : settings.plex?.url ? "plex" : "jellyfin",
       seerr_category: "trending",
       skip_existing: true,
       replace_existing: false,
@@ -450,13 +458,14 @@ function SettingsPage({ onTheme }: { onTheme: (theme: string) => void }) {
     seed: motionSeedKey("demo-jf-1", "Northlight"),
     preset: settings.motion_preset,
   });
-  async function testConnection(name: "jellyfin" | "jellyseerr" | "tmdb") {
+  async function testConnection(name: "jellyfin" | "plex" | "jellyseerr" | "tmdb") {
     try {
       const draft = settings![name] || {};
       const result = (await api.testProvider(name, {
         url: String(draft.url || ""),
         api_key: String(draft.api_key || ""),
         user_id: String((draft as { user_id?: string }).user_id || ""),
+        library_ids: String((draft as { library_ids?: string }).library_ids || ""),
       })) as { ok?: boolean; message?: string; error?: string };
       const toast = providerToast(result);
       notify(toast.kind, toast.text);
@@ -490,6 +499,27 @@ function SettingsPage({ onTheme }: { onTheme: (theme: string) => void }) {
           <label>User id (optional)</label>
           <input value={settings.jellyfin.user_id || ""} onChange={(e) => patch("jellyfin", "user_id", e.target.value)} />
           <button className="btn ghost tiny" style={{ marginTop: 10 }} onClick={() => testConnection("jellyfin")}>Test Jellyfin</button>
+        </div>
+        <div className="card">
+          <h3>Plex</h3>
+          <label>URL</label>
+          <input value={settings.plex.url || ""} onChange={(e) => patch("plex", "url", e.target.value)} placeholder="http://192.168.1.10:32400" />
+          <label>Plex token</label>
+          <input
+            type="password"
+            autoComplete="off"
+            value={settings.plex.api_key || ""}
+            onChange={(e) => patch("plex", "api_key", e.target.value)}
+            placeholder="saved on the server"
+          />
+          <label>Library section ids (optional, comma-separated)</label>
+          <input
+            value={settings.plex.library_ids || ""}
+            onChange={(e) => patch("plex", "library_ids", e.target.value)}
+            placeholder="empty = every movie and TV library"
+          />
+          <button className="btn ghost tiny" style={{ marginTop: 10 }} onClick={() => testConnection("plex")}>Test Plex</button>
+          <p className="muted">Find the token in Plex Web → any item → Get Info → View XML, or via your account's authorized devices. Read-only library access is enough.</p>
         </div>
         <div className="card">
           <h3>Jellyseerr / Seerr</h3>
@@ -829,6 +859,7 @@ function SettingsPage({ onTheme }: { onTheme: (theme: string) => void }) {
               <select value={String(cron.source || "jellyfin")} onChange={(e) => setCronAt(index, { ...cron, source: e.target.value })}>
                 <option value="demo">demo</option>
                 <option value="jellyfin">jellyfin</option>
+                <option value="plex">plex</option>
                 <option value="jellyseerr">jellyseerr</option>
                 <option value="all">all</option>
               </select>

@@ -66,6 +66,11 @@ object UrlSupport {
         return list.take(depth.coerceIn(1, 50)).joinToString(",")
     }
 
+    fun isPlexActionUrl(actionUrl: String?): Boolean {
+        if (actionUrl.isNullOrBlank()) return false
+        return actionUrl.startsWith("plex://", ignoreCase = true)
+    }
+
     fun parseJellyfinItemId(actionUrl: String?): String? {
         if (actionUrl.isNullOrBlank()) return null
         if (!actionUrl.startsWith("jellyfin://items/")) return null

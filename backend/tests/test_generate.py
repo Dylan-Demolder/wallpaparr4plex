@@ -159,6 +159,40 @@ def test_default_http_get_sends_jellyfin_auth(suite_dirs, monkeypatch):
     assert seen["headers"]["X-Emby-Token"] == "secret"
 
 
+def test_default_http_get_sends_plex_auth(suite_dirs, monkeypatch):
+    from app.config import save_settings
+    from app.generate import _default_http_get
+    from app.models import AppSettings
+
+    save_settings(AppSettings(plex={"url": "http://plex:32400", "api_key": "plex-secret"}))
+    seen: dict = {}
+
+    class Client:
+        def __init__(self, timeout: float = 15.0):
+            self.timeout = timeout
+
+        def get_bytes(self, url, headers=None):
+            seen["url"] = url
+            seen["headers"] = headers
+            return b"\xff\xd8\xff" + b"\x00" * 16
+
+    monkeypatch.setattr("app.generate.HttpClient", Client)
+    data = _default_http_get("http://plex:32400/library/metadata/1/art")
+    assert data.startswith(b"\xff\xd8\xff")
+    assert seen["headers"]["X-Plex-Token"] == "plex-secret"
+    assert seen["headers"]["X-Plex-Client-Identifier"] == "wallpaparr"
+
+
+def test_plex_unconfigured_generate_warns_and_uses_demo(suite_dirs):
+    from app.generate import run_generate
+    from app.models import GenerateRequest
+
+    out = run_generate(GenerateRequest(source="plex", layout="Netflix Hero", limit=1, skip_existing=False))
+    assert out["count"] == 1
+    assert out["created"]
+    assert any("Plex is not configured" in w for w in out["warnings"])
+
+
 def test_fetch_artwork_rejects_html(suite_dirs):
     from app.generate import _fetch_artwork
     from app.models import MediaItem

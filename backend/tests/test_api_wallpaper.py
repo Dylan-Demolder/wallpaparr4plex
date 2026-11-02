@@ -525,6 +525,44 @@ def test_media_artwork_proxies_jellyfin_bytes(client, monkeypatch):
     assert response.content.startswith(b"\xff\xd8\xff")
 
 
+def test_media_artwork_requires_plex(client):
+    response = client.get("/api/media/artwork/123?source=plex")
+    assert response.status_code == 404
+    assert "Plex is not configured" in response.text
+
+
+def test_media_artwork_proxies_plex_bytes(client, monkeypatch):
+    from app.config import save_settings
+    from app.models import AppSettings
+
+    save_settings(AppSettings(plex={"url": "http://plex:32400", "api_key": "plex-secret"}))
+    seen: list[str] = []
+
+    class FakeHttp:
+        def __init__(self, timeout: float = 15.0):
+            self.timeout = timeout
+
+        def get_bytes(self, url, headers=None):
+            seen.append(url)
+            assert headers and headers["X-Plex-Token"] == "plex-secret"
+            return b"\xff\xd8\xffFAKE"
+
+    monkeypatch.setattr("app.api.HttpClient", FakeHttp)
+    response = client.get("/api/media/artwork/123?source=plex")
+    assert response.status_code == 200
+    assert response.content.startswith(b"\xff\xd8\xff")
+    assert seen[0] == "http://plex:32400/library/metadata/123/art"
+
+
+def test_dashboard_reports_plex(client):
+    from app.config import save_settings
+    from app.models import AppSettings
+
+    save_settings(AppSettings(plex={"url": "http://plex:32400", "api_key": "plex-secret"}))
+    body = client.get("/api/dashboard").json()
+    assert body["providers"]["plex"]["configured"] is True
+
+
 def test_media_logo_serves_demo_png(client):
     response = client.get("/api/media/logo/demo-jf-1")
     assert response.status_code == 200
@@ -679,6 +717,7 @@ def test_get_settings_redacts_provider_keys(client):
     save_settings(
         AppSettings(
             jellyfin={"url": "http://jf:8096", "api_key": "super-secret", "user_id": "u"},
+            plex={"url": "http://plex:32400", "api_key": "plex-secret"},
             jellyseerr={"url": "http://seerr:5055", "api_key": "seerr-secret"},
             tmdb={"api_key": "tmdb-secret", "language": "en-US"},
             omdb={"api_key": "omdb-secret"},
@@ -686,6 +725,7 @@ def test_get_settings_redacts_provider_keys(client):
     )
     body = client.get("/api/settings").json()
     assert body["jellyfin"]["api_key"] == REDACTED_API_KEY
+    assert body["plex"]["api_key"] == REDACTED_API_KEY
     assert body["jellyseerr"]["api_key"] == REDACTED_API_KEY
     assert body["tmdb"]["api_key"] == REDACTED_API_KEY
     assert body["omdb"]["api_key"] == REDACTED_API_KEY
@@ -701,17 +741,20 @@ def test_post_settings_keeps_redacted_keys_and_clears_blank(client):
     save_settings(
         AppSettings(
             jellyfin={"url": "http://jf:8096", "api_key": "keep-me", "user_id": "u"},
+            plex={"url": "http://plex:32400", "api_key": "keep-plex"},
             tmdb={"api_key": "replace-me", "language": "en-US"},
             omdb={"api_key": "drop-me"},
         )
     )
     settings = client.get("/api/settings").json()
     assert settings["jellyfin"]["api_key"] == REDACTED_API_KEY
+    assert settings["plex"]["api_key"] == REDACTED_API_KEY
     settings["tmdb"]["api_key"] = "fresh-tmdb"
     settings["omdb"]["api_key"] = ""
     assert client.post("/api/settings", json=settings).status_code == 200
     stored = load_settings()
     assert stored.jellyfin["api_key"] == "keep-me"
+    assert stored.plex["api_key"] == "keep-plex"
     assert stored.tmdb["api_key"] == "fresh-tmdb"
     assert stored.omdb.get("api_key") == ""
 

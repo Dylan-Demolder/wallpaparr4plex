@@ -13,8 +13,15 @@ object ClientIntents {
     const val SEERRTV_PACKAGE = "ca.devmesh.seerrtv"
     const val MOONFIN_PACKAGE = "org.moonfin.androidtv"
     const val JELLYFIN_PACKAGE = "org.jellyfin.androidtv"
+    const val PLEX_PACKAGE = "com.plexapp.android"
 
     val SUPPORTED: List<ClientProfile> = listOf(
+        ClientProfile(
+            "Plex",
+            PLEX_PACKAGE,
+            ClientType.DEEP_LINK,
+            "Opens Plex-sourced titles in Plex for Android TV at the item's pre-play page.",
+        ),
         ClientProfile(
             "Moonfin",
             MOONFIN_PACKAGE,
@@ -124,6 +131,12 @@ object ClientIntents {
         seerrBrowserFallback: Boolean = false,
     ): String? {
         val action = actionUrl?.trim()?.ifBlank { null }
+        // Plex already gives us the exact pre-play URI (plex://play/?...).
+        // Only the Plex app can resolve it, so pass it through regardless of
+        // the preferred Jellyfin/Seerr client.
+        if (UrlSupport.isPlexActionUrl(action)) {
+            return action
+        }
         val itemId = UrlSupport.parseJellyfinItemId(action)
         if (itemId != null) {
             val preferred = preferredPackage?.trim().orEmpty()

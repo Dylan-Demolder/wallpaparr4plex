@@ -32,6 +32,7 @@ from app.motion import intensity_from_preset, profile_from_settings, wallpaper_m
 from app.ops import load_ops
 from app.providers.demo import DemoProvider
 from app.providers.jellyfin import JellyfinProvider
+from app.providers.plex import PlexProvider
 from app.providers.seerr import SeerrProvider
 from app.providers.tmdb import TmdbProvider
 from app.queues import QUEUE_DEFS, TASTE_PRESETS, queue_ids_for, summarize_queues
@@ -210,6 +211,7 @@ def suite_options() -> dict[str, Any]:
             "pinned",
         ],
         "clients": [
+            {"name": "Plex", "package": "com.plexapp.android", "type": "deep_link"},
             {"name": "Moonfin", "package": "org.moonfin.androidtv", "type": "deep_link"},
             {"name": "Jellyfin", "package": "org.jellyfin.androidtv", "type": "deep_link"},
             {"name": "SeerrTV", "package": "ca.devmesh.seerrtv", "type": "launch"},
@@ -495,11 +497,15 @@ def tonight(
         if rec is None:
             rec = next((r for r in catalog if r.filename == path), None)
         if rec:
-            selected_id = rec.jellyfin_id or rec.tmdb_id or rec.imdb_id
-            if rec.jellyfin_id or rec.tmdb_id:
-                artwork_url = f"/api/media/artwork/{quote(str(rec.jellyfin_id or rec.tmdb_id), safe='')}"
+            selected_id = rec.jellyfin_id or rec.plex_id or rec.tmdb_id or rec.imdb_id
+            if rec.plex_id:
+                artwork_url = f"/api/media/artwork/{quote(rec.plex_id, safe='')}?source=plex"
+            elif rec.jellyfin_id or rec.tmdb_id:
+                media_id = rec.jellyfin_id or rec.tmdb_id
+                artwork_url = f"/api/media/artwork/{quote(str(media_id), safe='')}?source=jellyfin"
     motion_seed = wallpaper_motion_seed(
         jellyfin_id=rec.jellyfin_id if rec else None,
+        plex_id=rec.plex_id if rec else None,
         tmdb_id=rec.tmdb_id if rec else None,
         imdb_id=rec.imdb_id if rec else None,
         filename=rec.filename if rec else path,
@@ -532,6 +538,7 @@ def dashboard() -> dict[str, Any]:
     catalog = catalog_store.load_catalog()
     ops = load_ops()
     jf = settings.jellyfin or {}
+    px = settings.plex or {}
     se = settings.jellyseerr or {}
     tm = settings.tmdb or {}
     return {
@@ -555,6 +562,10 @@ def dashboard() -> dict[str, Any]:
             "jellyfin": {
                 "configured": bool(jf.get("url") and jf.get("api_key")),
                 "last_test": ops.get("test_jellyfin"),
+            },
+            "plex": {
+                "configured": bool(px.get("url") and px.get("api_key")),
+                "last_test": ops.get("test_plex"),
             },
             "jellyseerr": {
                 "configured": bool(se.get("url") and se.get("api_key")),
@@ -613,6 +624,13 @@ def test_provider(provider: str, body: dict[str, Any] | None = Body(default=None
     if key == "jellyfin":
         cfg = {**(settings.jellyfin or {}), **overrides}
         result = JellyfinProvider(url=cfg.get("url") or "", api_key=cfg.get("api_key") or "", user_id=cfg.get("user_id") or "").test()
+    elif key == "plex":
+        cfg = {**(settings.plex or {}), **overrides}
+        result = PlexProvider(
+            url=cfg.get("url") or "",
+            api_key=cfg.get("api_key") or "",
+            library_ids=cfg.get("library_ids") or "",
+        ).test()
     elif key in ("seerr", "jellyseerr"):
         cfg = {**(settings.jellyseerr or {}), **overrides}
         result = SeerrProvider(url=cfg.get("url") or "", api_key=cfg.get("api_key") or "").test()
@@ -648,7 +666,12 @@ def demo_attribution():
 
 
 @router.get("/api/media/logo/{item_id}")
-def media_logo(item_id: str, tmdb_id: str | None = None, media_type: str = "movie"):
+def media_logo(
+    item_id: str,
+    tmdb_id: str | None = None,
+    media_type: str = "movie",
+    source: str | None = None,
+):
     """Clearlogo proxy: demo PNG, Jellyfin Logo, or TMDB logos. Rejects non-images."""
     from app.generate import resolve_logo_bytes
 
@@ -656,7 +679,7 @@ def media_logo(item_id: str, tmdb_id: str | None = None, media_type: str = "movi
     tmdb_id = _safe_media_id(tmdb_id) if tmdb_id else None
     if not item_id:
         raise HTTPException(404, "No logo for this title")
-    data = resolve_logo_bytes(item_id, tmdb_id=tmdb_id, media_type=media_type)
+    data = resolve_logo_bytes(item_id, tmdb_id=tmdb_id, media_type=media_type, source=source)
     if data and looks_like_image(data):
         return Response(
             content=data,
@@ -667,8 +690,12 @@ def media_logo(item_id: str, tmdb_id: str | None = None, media_type: str = "movi
 
 
 @router.get("/api/media/artwork/{item_id}")
-def media_artwork(item_id: str, kind: str = Query("backdrop")):
-    """Same-origin artwork for the editor: demo stills, then Jellyfin Backdrop/Primary."""
+def media_artwork(
+    item_id: str,
+    kind: str = Query("backdrop"),
+    source: str | None = Query(None),
+):
+    """Same-origin artwork for the editor: demo stills, then Jellyfin or Plex art."""
     item_id = _safe_media_id(item_id)
     if not item_id:
         raise HTTPException(404, "No image")
@@ -680,6 +707,32 @@ def media_artwork(item_id: str, kind: str = Query("backdrop")):
             headers={"Cache-Control": "public, max-age=86400"},
         )
     settings = load_settings()
+    provider = (source or "").strip().lower()
+    if provider == "plex":
+        px = settings.plex or {}
+        base = (px.get("url") or "").rstrip("/")
+        key = px.get("api_key") or ""
+        if not base or not key:
+            raise HTTPException(404, "Plex is not configured")
+        headers = PlexProvider(url=base, api_key=key).auth_headers()
+        kinds = ["thumb", "art"] if kind == "poster" else ["art", "thumb"]
+        last_error = "No image"
+        for image_kind in kinds:
+            url = f"{base}/library/metadata/{item_id}/{image_kind}"
+            try:
+                data = HttpClient(timeout=20.0).get_bytes(url, headers=headers)
+            except Exception as exc:
+                last_error = str(exc)
+                continue
+            if data and looks_like_image(data):
+                return Response(
+                    content=data,
+                    media_type=image_media_type(data),
+                    headers={"Cache-Control": "private, max-age=60"},
+                )
+            if data:
+                last_error = "Plex did not return an image"
+        raise HTTPException(404, last_error)
     jf = settings.jellyfin or {}
     base = (jf.get("url") or "").rstrip("/")
     key = jf.get("api_key") or ""

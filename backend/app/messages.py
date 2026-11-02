@@ -6,6 +6,7 @@ from typing import Any
 
 PROVIDER_LABELS = {
     "jellyfin": "Jellyfin",
+    "plex": "Plex",
     "jellyseerr": "Jellyseerr / Seerr",
     "seerr": "Jellyseerr / Seerr",
     "tmdb": "TMDB",

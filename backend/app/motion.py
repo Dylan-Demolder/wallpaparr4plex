@@ -237,6 +237,7 @@ def motion_seed_key(*parts: object) -> str:
 def wallpaper_motion_seed(
     *,
     jellyfin_id: str | None = None,
+    plex_id: str | None = None,
     tmdb_id: str | None = None,
     imdb_id: str | None = None,
     filename: str | None = None,
@@ -244,7 +245,7 @@ def wallpaper_motion_seed(
     title: str | None = None,
 ) -> str:
     """Same id chain for CSS preview and ffmpeg bake."""
-    return motion_seed_key(jellyfin_id, tmdb_id, imdb_id, filename or path, title)
+    return motion_seed_key(jellyfin_id, plex_id, tmdb_id, imdb_id, filename or path, title)
 
 
 def fnv1a32(text: str) -> int:
@@ -313,6 +314,7 @@ def profile_for_wallpaper(
     settings,
     *,
     jellyfin_id: str | None = None,
+    plex_id: str | None = None,
     tmdb_id: str | None = None,
     imdb_id: str | None = None,
     filename: str | None = None,
@@ -325,6 +327,7 @@ def profile_for_wallpaper(
     enabled = bool(getattr(settings, "motion_vary", True))
     key = seed or wallpaper_motion_seed(
         jellyfin_id=jellyfin_id,
+        plex_id=plex_id,
         tmdb_id=tmdb_id,
         imdb_id=imdb_id,
         filename=filename,

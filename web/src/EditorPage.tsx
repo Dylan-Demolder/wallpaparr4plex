@@ -41,6 +41,7 @@ type MediaRow = {
   availability?: string;
   source?: string;
   jellyfin_id?: string | null;
+  plex_id?: string | null;
   tmdb_id?: string | null;
   backdrop_url?: string | null;
   poster_url?: string | null;
@@ -82,7 +83,7 @@ function sampleFromMedia(item: MediaRow): Record<string, string> {
 }
 
 function mediaKey(item: MediaRow): string {
-  return String(item.jellyfin_id || item.tmdb_id || item.title || "");
+  return String(item.plex_id || item.jellyfin_id || item.tmdb_id || item.title || "");
 }
 
 export function EditorPage({ initialLayout }: { initialLayout?: string } = {}) {
@@ -94,7 +95,7 @@ export function EditorPage({ initialLayout }: { initialLayout?: string } = {}) {
   const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const [previewSource, setPreviewSource] = useState<"demo" | "jellyfin">("demo");
+  const [previewSource, setPreviewSource] = useState<"demo" | "jellyfin" | "plex">("demo");
   const [catalog, setCatalog] = useState<MediaRow[]>([]);
   const [created, setCreated] = useState<WallpaperRecord[]>([]);
   const [previewId, setPreviewId] = useState("");
@@ -176,13 +177,15 @@ export function EditorPage({ initialLayout }: { initialLayout?: string } = {}) {
   const preview = catalog.find((row) => mediaKey(row) === previewId) || catalog[0];
   const sample = preview ? sampleFromMedia(preview) : SAMPLE;
   const artId = preview ? mediaKey(preview) : "demo-jf-1";
-  const artSrc = api.mediaArtwork(artId);
+  const previewProvider = previewSource === "plex" ? "plex" : previewSource === "jellyfin" ? "jellyfin" : undefined;
+  const previewLabel = previewSource === "jellyfin" ? "Jellyfin preview" : previewSource === "plex" ? "Plex preview" : "Demo preview";
+  const artSrc = api.mediaArtwork(artId, "backdrop", previewProvider);
   const createdSlides = created.map(wallpaperSlide);
   const intensity = intensityFromPreset(motionPreset) || clampIntensity(0.55);
   const previewDuration = duration || defaultDuration();
   const motionVars = motionPreviewVars(motionStyle, intensity, previewDuration, {
     vary: motionVary,
-    seed: motionSeedKey(preview?.jellyfin_id, preview?.tmdb_id, artId, preview?.title),
+    seed: motionSeedKey(preview?.jellyfin_id, preview?.plex_id, preview?.tmdb_id, artId, preview?.title),
     preset: motionPreset,
   });
   const showLogo = prefersLogo(layout.title_display) && Boolean(logoSrc);
@@ -206,7 +209,7 @@ export function EditorPage({ initialLayout }: { initialLayout?: string } = {}) {
       setLogoNatural(null);
       return;
     }
-    const url = api.mediaLogo(artId, preview?.tmdb_id, preview?.media_type || "movie");
+    const url = api.mediaLogo(artId, preview?.tmdb_id, preview?.media_type || "movie", previewProvider);
     let cancelled = false;
     const probe = new window.Image();
     probe.onload = () => {
@@ -416,10 +419,11 @@ export function EditorPage({ initialLayout }: { initialLayout?: string } = {}) {
               <select
                 value={previewSource}
                 aria-label="Preview source"
-                onChange={(e) => setPreviewSource(e.target.value as "demo" | "jellyfin")}
+                onChange={(e) => setPreviewSource(e.target.value as "demo" | "jellyfin" | "plex")}
               >
                 <option value="demo">Demo catalog</option>
                 <option value="jellyfin">Jellyfin</option>
+                <option value="plex">Plex</option>
               </select>
             </label>
             <label className="inline">
@@ -439,11 +443,11 @@ export function EditorPage({ initialLayout }: { initialLayout?: string } = {}) {
           </div>
           {catalog.length > 0 && (
             <>
-              <label>{previewSource === "jellyfin" ? "Jellyfin preview" : "Demo preview"}</label>
+              <label>{previewLabel}</label>
               <select
                 value={previewId}
                 onChange={(e) => setPreviewId(e.target.value)}
-                aria-label={previewSource === "jellyfin" ? "Jellyfin preview" : "Demo preview"}
+                aria-label={previewLabel}
               >
                 {catalog.map((item) => (
                   <option key={mediaKey(item)} value={mediaKey(item)}>
@@ -454,8 +458,11 @@ export function EditorPage({ initialLayout }: { initialLayout?: string } = {}) {
               </select>
             </>
           )}
-          {previewSource === "jellyfin" && catalog.length === 0 && (
-            <p className="muted">No Jellyfin artwork yet — connect Jellyfin in Settings, or preview the demo catalog.</p>
+          {previewSource !== "demo" && catalog.length === 0 && (
+            <p className="muted">
+              No {previewSource === "plex" ? "Plex" : "Jellyfin"} artwork yet — connect{" "}
+              {previewSource === "plex" ? "Plex" : "Jellyfin"} in Settings, or preview the demo catalog.
+            </p>
           )}
           <label>Layout name</label>
           <input value={layout.name} onChange={(e) => setLayout({ ...layout, name: e.target.value })} />

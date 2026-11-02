@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.models import MediaItem
 from app.providers.demo import DemoProvider
 from app.providers.jellyfin import JellyfinProvider
+from app.providers.plex import PlexProvider
 from app.providers.seerr import SeerrProvider
 from app.providers.tmdb import TmdbProvider
 
@@ -463,6 +464,194 @@ def test_tmdb_logo_fetch_survives_missing_payload():
             raise RuntimeError("nope")
 
     assert TmdbProvider(api_key="k", client=Client()).fetch_logo_url("1", "movie") is None
+
+
+def test_plex_parses_movie_metadata_and_deep_link():
+    sections = {
+        "MediaContainer": {
+            "Directory": [{"key": "1", "type": "movie", "title": "Movies"}],
+        }
+    }
+    metadata = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "123",
+                    "key": "/library/metadata/123",
+                    "type": "movie",
+                    "title": "Dune",
+                    "year": 2021,
+                    "summary": "Sand",
+                    "audienceRating": 8.5,
+                    "contentRating": "PG-13",
+                    "duration": 155 * 60 * 1000,
+                    "addedAt": 1700000000,
+                    "art": "/library/metadata/123/art/1700000000",
+                    "thumb": "/library/metadata/123/thumb/1700000000",
+                    "Guid": [{"id": "tmdb://438631"}, {"id": "imdb://tt1160419"}],
+                    "Genre": [{"tag": "Science Fiction"}, {"tag": "Adventure"}],
+                    "viewCount": 0,
+                }
+            ]
+        }
+    }
+    identity = {"MediaContainer": {"machineIdentifier": "srv-1", "version": "1.41.0"}}
+    client = FakeClient(
+        None,
+        by_url={
+            "/library/sections/1/all": metadata,
+            "/library/sections": sections,
+            "/identity": identity,
+        },
+    )
+    provider = PlexProvider(url="plex:32400", api_key="k", client=client)
+    items = provider.list_items()
+    assert len(items) == 1
+    item = items[0]
+    assert item.title == "Dune"
+    assert item.year == 2021
+    assert item.genres == ["Science Fiction", "Adventure"]
+    assert item.rating == 8.5
+    assert item.official_rating == "PG-13"
+    assert item.overview == "Sand"
+    assert item.runtime == "2h 35m"
+    assert item.media_type == "movie"
+    assert item.watch_state == "unwatched"
+    assert item.library_state == "in_library"
+    assert item.availability == "available"
+    assert item.source == "plex"
+    assert item.plex_id == "123"
+    assert item.jellyfin_id is None
+    assert item.tmdb_id == "438631"
+    assert item.imdb_id == "tt1160419"
+    assert item.action_url == "plex://play/?metadataKey=%2Flibrary%2Fmetadata%2F123&server=srv-1"
+    assert item.backdrop_url == "http://plex:32400/library/metadata/123/art/1700000000"
+    assert item.poster_url == "http://plex:32400/library/metadata/123/thumb/1700000000"
+    assert item.logo_url is None
+
+
+def test_plex_show_progress_and_legacy_guid():
+    sections = {
+        "MediaContainer": {
+            "Directory": [{"key": "2", "type": "show", "title": "TV Shows"}],
+        }
+    }
+    metadata = {
+        "MediaContainer": {
+            "Metadata": [
+                {
+                    "ratingKey": "show-partial",
+                    "type": "show",
+                    "title": "Partly Through",
+                    "year": 2021,
+                    "viewedLeafCount": 3,
+                    "leafCount": 10,
+                    "viewOffset": 120000,
+                },
+                {
+                    "ratingKey": "show-done",
+                    "type": "show",
+                    "title": "All Done",
+                    "year": 2021,
+                    "viewedLeafCount": 8,
+                    "leafCount": 8,
+                },
+                {
+                    "ratingKey": "show-none",
+                    "type": "show",
+                    "title": "Not Started",
+                    "year": 2021,
+                    "viewedLeafCount": 0,
+                    "leafCount": 8,
+                    "guid": "com.plexapp.agents.themoviedb://999?lang=en",
+                },
+            ]
+        }
+    }
+    identity = {"MediaContainer": {"machineIdentifier": "srv-2"}}
+    provider = PlexProvider(
+        url="http://plex:32400",
+        api_key="k",
+        client=FakeClient(
+            None,
+            by_url={
+                "/library/sections/2/all": metadata,
+                "/library/sections": sections,
+                "/identity": identity,
+            },
+        ),
+    )
+    by_id = {item.plex_id: item for item in provider.list_items()}
+    assert by_id["show-partial"].watch_state == "partial"
+    assert by_id["show-done"].watch_state == "watched"
+    assert by_id["show-none"].watch_state == "unwatched"
+    assert by_id["show-none"].tmdb_id == "999"
+    assert by_id["show-done"].media_type == "tv"
+
+
+def test_plex_library_ids_filter_sections():
+    sections = {
+        "MediaContainer": {
+            "Directory": [
+                {"key": "1", "type": "movie", "title": "Movies"},
+                {"key": "2", "type": "show", "title": "TV Shows"},
+            ],
+        }
+    }
+    provider = PlexProvider(
+        url="http://plex:32400",
+        api_key="k",
+        library_ids="2",
+        client=FakeClient(
+            None,
+            by_url={
+                "/library/sections/2/all": {
+                    "MediaContainer": {
+                        "Metadata": [{"ratingKey": "s1", "type": "show", "title": "Only Show"}]
+                    }
+                },
+                "/library/sections/1/all": {
+                    "MediaContainer": {
+                        "Metadata": [{"ratingKey": "m1", "type": "movie", "title": "Skipped Movie"}]
+                    }
+                },
+                "/library/sections": sections,
+                "/identity": {"MediaContainer": {"machineIdentifier": "srv"}},
+            },
+        ),
+    )
+    items = provider.list_items()
+    assert [item.title for item in items] == ["Only Show"]
+
+
+def test_plex_connection_reports_server_and_machine_id():
+    client = FakeClient(
+        None,
+        by_url={
+            "/library/sections": {
+                "MediaContainer": {"Directory": [{"key": "1", "type": "movie", "title": "Movies"}]}
+            },
+            "/identity": {"MediaContainer": {"machineIdentifier": "srv-3", "version": "1.42"}},
+            "/": {
+                "MediaContainer": {
+                    "friendlyName": "Living Room",
+                    "machineIdentifier": "srv-3",
+                    "version": "1.42",
+                }
+            },
+        },
+    )
+    result = PlexProvider(url="http://plex:32400", api_key="k", client=client).test()
+    assert result["ok"] is True
+    assert result["server"] == "Living Room"
+    assert result["machine_identifier"] == "srv-3"
+
+
+def test_plex_unconfigured_is_inert():
+    provider = PlexProvider()
+    assert provider.test()["ok"] is False
+    assert "Plex URL and token" in provider.test()["error"]
+    assert provider.list_items() == []
 
 
 def test_jellyfin_uses_primary_when_no_backdrop_tag():

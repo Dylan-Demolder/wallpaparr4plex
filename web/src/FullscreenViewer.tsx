@@ -20,6 +20,7 @@ export type ViewerItem = {
   videoSrc?: string | null;
   stillSrc?: string;
   jellyfin_id?: string | null;
+  plex_id?: string | null;
   tmdb_id?: string | null;
   imdb_id?: string | null;
   filename?: string;
@@ -42,6 +43,7 @@ export function wallpaperSlide(item: WallpaperRecord): ViewerItem {
     pinned: item.pinned,
     hidden: item.hidden,
     jellyfin_id: item.jellyfin_id,
+    plex_id: item.plex_id,
     tmdb_id: item.tmdb_id,
     imdb_id: item.imdb_id,
     filename: item.filename,

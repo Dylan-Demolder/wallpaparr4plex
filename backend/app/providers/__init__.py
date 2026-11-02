@@ -13,7 +13,7 @@ from app.models import MediaItem
 MAX_BYTES = 20 * 1024 * 1024
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_REDIRECTS = 5
-_SENSITIVE_HEADERS = frozenset({"authorization", "x-emby-token", "x-api-key"})
+_SENSITIVE_HEADERS = frozenset({"authorization", "x-emby-token", "x-api-key", "x-plex-token"})
 
 
 class Provider(Protocol):

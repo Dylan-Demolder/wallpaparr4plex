@@ -23,6 +23,7 @@ class MediaItem(BaseModel):
     availability: str = ""
     source: str = "demo"
     jellyfin_id: str | None = None
+    plex_id: str | None = None
     tmdb_id: str | None = None
     imdb_id: str | None = None
     action_url: str | None = None
@@ -110,9 +111,13 @@ class WallpaperRecord(BaseModel):
     availability: str = ""
     source: str = ""
     jellyfin_id: str | None = None
+    plex_id: str | None = None
     tmdb_id: str | None = None
     imdb_id: str | None = None
     action_url: str | None = None
+    backdrop_url: str | None = None
+    poster_url: str | None = None
+    logo_url: str | None = None
     overview: str = ""
     mtime: float = 0.0
     has_video: bool = False
@@ -123,7 +128,7 @@ class WallpaperRecord(BaseModel):
     def media_ids(self) -> set[str]:
         return {
             value.lower()
-            for value in (self.jellyfin_id, self.tmdb_id, self.imdb_id)
+            for value in (self.jellyfin_id, self.plex_id, self.tmdb_id, self.imdb_id)
             if value
         }
 
@@ -200,6 +205,7 @@ class AppSettings(BaseModel):
     overlays: list[dict[str, Any]] = Field(default_factory=list)
     title_display: Literal["logo", "text", "auto"] = "auto"
     jellyfin: dict[str, Any] = Field(default_factory=dict)
+    plex: dict[str, Any] = Field(default_factory=dict)
     jellyseerr: dict[str, Any] = Field(default_factory=dict)
     tmdb: dict[str, Any] = Field(default_factory=dict)
     omdb: dict[str, Any] = Field(default_factory=dict)

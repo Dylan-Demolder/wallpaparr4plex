@@ -154,6 +154,7 @@ def seeded_catalog(suite_dirs):
             library_state="in_library",
             availability="available",
             source="plex",
+            plex_id="demo-plex-5",
             imdb_id="tt9000005",
             mtime=now - 400,
         ),

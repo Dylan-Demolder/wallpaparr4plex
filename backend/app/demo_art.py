@@ -32,10 +32,14 @@ def load_catalog() -> list[dict]:
     return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
 
 
+_STILL_ALIASES = {"demo-plex-5": "paper-atlas"}
+
+
 def still_path(slug_or_id: str | None) -> Path | None:
     if not slug_or_id:
         return None
     key = slug_or_id.strip().lower()
+    key = _STILL_ALIASES.get(key, key)
     for row in load_catalog():
         names = {
             str(row.get("id") or "").lower(),
@@ -86,7 +90,14 @@ def logo_bytes(slug_or_id: str | None) -> bytes | None:
 
 
 def logo_path_for_item(item: MediaItem) -> Path | None:
-    keys = [item.jellyfin_id, item.tmdb_id, item.imdb_id, TITLE_SLUGS.get(item.title), item.title]
+    keys = [
+        item.jellyfin_id,
+        item.plex_id,
+        item.tmdb_id,
+        item.imdb_id,
+        TITLE_SLUGS.get(item.title),
+        item.title,
+    ]
     for key in keys:
         found = logo_path(key)
         if found:
@@ -102,8 +113,12 @@ def logo_bytes_for_item(item: MediaItem) -> bytes | None:
 
 
 def still_path_for_item(item: MediaItem) -> Path | None:
-    keys = [item.jellyfin_id, item.tmdb_id, item.imdb_id]
-    demoish = (item.jellyfin_id or "").lower().startswith("demo-") or item.source == "demo"
+    keys = [item.jellyfin_id, item.plex_id, item.tmdb_id, item.imdb_id]
+    demoish = (
+        (item.jellyfin_id or "").lower().startswith("demo-")
+        or (item.plex_id or "").lower().startswith("demo-")
+        or item.source == "demo"
+    )
     if demoish:
         keys.extend([TITLE_SLUGS.get(item.title), item.title])
     for key in keys:
@@ -119,9 +134,9 @@ def attach_demo_art(item: MediaItem) -> MediaItem:
     updates: dict = {}
     if path is not None:
         updates["backdrop_path"] = str(path)
-        updates["backdrop_url"] = item.backdrop_url or f"/api/media/artwork/{item.jellyfin_id or path.stem}"
+        updates["backdrop_url"] = item.backdrop_url or f"/api/media/artwork/{item.jellyfin_id or item.plex_id or path.stem}"
     if logo is not None:
-        updates["logo_url"] = item.logo_url or f"/api/media/logo/{item.jellyfin_id or logo.stem}"
+        updates["logo_url"] = item.logo_url or f"/api/media/logo/{item.jellyfin_id or item.plex_id or logo.stem}"
     if not updates:
         return item
     return item.model_copy(update=updates)

@@ -88,14 +88,17 @@ def apply_pool(
         filtered = [
             r
             for r in records
-            if _norm(r.library_state) == "in_library" or r.jellyfin_id or _norm(r.source) == "jellyfin"
+            if _norm(r.library_state) == "in_library"
+            or r.jellyfin_id
+            or r.plex_id
+            or _norm(r.source) in ("jellyfin", "plex")
         ]
     elif key in ("seerr_only", "not_in_library"):
         filtered = [
             r
             for r in records
             if _norm(r.library_state) in ("seerr_only", "not_in_library")
-            or (_norm(r.source) in ("jellyseerr", "seerr") and not r.jellyfin_id)
+            or (_norm(r.source) in ("jellyseerr", "seerr") and not r.jellyfin_id and not r.plex_id)
         ]
     elif key == "requestable":
         filtered = [

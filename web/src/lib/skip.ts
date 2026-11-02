@@ -1,5 +1,6 @@
 export type Identified = {
   jellyfin_id?: string | null;
+  plex_id?: string | null;
   tmdb_id?: string | null;
   imdb_id?: string | null;
   title: string;
@@ -8,7 +9,7 @@ export type Identified = {
 
 function idsOf(item: Identified): Set<string> {
   return new Set(
-    [item.jellyfin_id, item.tmdb_id, item.imdb_id]
+    [item.jellyfin_id, item.plex_id, item.tmdb_id, item.imdb_id]
       .filter(Boolean)
       .map((value) => String(value).toLowerCase()),
   );

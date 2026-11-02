@@ -69,6 +69,7 @@ export type WallpaperRecord = {
   availability?: string;
   source: string;
   jellyfin_id?: string | null;
+  plex_id?: string | null;
   tmdb_id?: string | null;
   imdb_id?: string | null;
   has_video: boolean;
@@ -120,6 +121,7 @@ export type AppSettings = {
   overlays?: Array<Record<string, unknown>>;
   title_display?: "auto" | "logo" | "text";
   jellyfin: Record<string, string>;
+  plex: Record<string, string>;
   jellyseerr: Record<string, string>;
   tmdb: Record<string, string>;
   omdb: Record<string, string>;

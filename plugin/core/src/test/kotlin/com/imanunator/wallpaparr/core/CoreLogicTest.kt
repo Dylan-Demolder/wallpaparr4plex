@@ -278,6 +278,13 @@ class ClientIntentsTest {
         )
         assertEquals("moonfin://item?id=jf-42", uri)
     }
+
+    @Test
+    fun plexActionUrlPassesThrough() {
+        val action = "plex://play/?metadataKey=%2Flibrary%2Fmetadata%2F123&server=srv"
+        assertEquals(action, ClientIntents.resolveActionUri(ClientIntents.MOONFIN_PACKAGE, action))
+        assertEquals(action, ClientIntents.resolveActionUri(ClientIntents.PLEX_PACKAGE, action))
+    }
 }
 
 class MediaChoiceTest {

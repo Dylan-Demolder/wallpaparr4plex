@@ -114,12 +114,14 @@ export function galleryPreviewSources(
     filename: string;
     has_video?: boolean;
     jellyfin_id?: string | null;
+    plex_id?: string | null;
     tmdb_id?: string | null;
+    source?: string;
   },
   urls: {
     wallpaperImage: (layout: string, filename: string) => string;
-    mediaArtwork: (itemId: string) => string;
-    mediaLogo: (itemId: string, tmdbId?: string | null) => string;
+    mediaArtwork: (itemId: string, kind?: string, source?: string) => string;
+    mediaLogo: (itemId: string, tmdbId?: string | null, mediaType?: string, source?: string) => string;
   },
 ): GalleryPreviewSources {
   const stem = filenameStem(item.filename);
@@ -127,9 +129,10 @@ export function galleryPreviewSources(
   const plateSrc = urls.wallpaperImage(item.layout, `${stem}_plate.jpg`);
   const chromeSrc = urls.wallpaperImage(item.layout, `${stem}_chrome.png`);
   const videoSrc = item.has_video ? urls.wallpaperImage(item.layout, `${stem}.mp4`) : null;
-  const mediaId = item.jellyfin_id || item.tmdb_id || "";
-  const artworkSrc = mediaId ? urls.mediaArtwork(mediaId) : null;
-  const logoSrc = mediaId ? urls.mediaLogo(mediaId, item.tmdb_id) : null;
+  const mediaId = item.plex_id || item.jellyfin_id || item.tmdb_id || "";
+  const mediaSource = item.plex_id ? "plex" : item.jellyfin_id ? "jellyfin" : undefined;
+  const artworkSrc = mediaId ? urls.mediaArtwork(mediaId, "backdrop", mediaSource) : null;
+  const logoSrc = mediaId ? urls.mediaLogo(mediaId, item.tmdb_id, "movie", mediaSource) : null;
   const artCandidates = [artworkSrc, plateSrc, stillSrc].filter((src, index, list): src is string => Boolean(src) && list.indexOf(src) === index);
   return { stillSrc, videoSrc, plateSrc, artworkSrc, chromeSrc, logoSrc, artCandidates };
 }

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Cinematic live wallpapers for Projectivy, baked from your Jellyfin / Jellyseerr library.<br/>
+  Cinematic live wallpapers for Projectivy, baked from your Jellyfin, Plex, or Jellyseerr library.<br/>
   Stills, or optional <em>parallax VIDEO</em> loops if you want the home screen to actually move.
 </p>
 
@@ -43,7 +43,7 @@ It's an *arr* box for the home screen: titles in, wallpaper out, Projectivy play
 </p>
 
 <p align="center">
-  <em>A real baked parallax loop, not a mockup — Netflix Hero chrome over a license-safe demo still. Same pipeline that runs against your Jellyfin/Seerr library.</em>
+  <em>A real baked parallax loop, not a mockup — Netflix Hero chrome over a license-safe demo still. Same pipeline that runs against your Jellyfin, Plex, or Seerr library.</em>
 </p>
 
 You get a small server plus a Projectivy plugin. The server pulls titles, bakes a 16:9 wallpaper (title, rating, watch status, optional motion), and the plugin feeds that to the TV. Open Tonight in the web UI and you're looking at the next frame Projectivy will show.
@@ -53,7 +53,7 @@ You get a small server plus a Projectivy plugin. The server pulls titles, bakes 
 | **Tonight** | Home. Live preview of whatever the TV will show next. |
 | **Gallery** | Every still you've baked. Pin, hide, delete, or open full-screen (plays the MP4 when there is one). |
 | **Editor** | Layout, fonts, colors, badges, motion. Six presets if you don't want to start from a blank canvas. |
-| **Generate** | Pull a batch from Jellyfin/Jellyseerr and bake it. That's the whole job. |
+| **Generate** | Pull a batch from Jellyfin, Plex, or Jellyseerr and bake it. That's the whole job. |
 | **Settings** | URLs and API keys, taste mix, motion defaults, cron. |
 | **Dashboard** | Gallery size, last cron, whether the providers actually answered. |
 
@@ -63,7 +63,7 @@ You get a small server plus a Projectivy plugin. The server pulls titles, bakes 
 
 - **Docker** (or Compose) on a machine the TV can reach on the LAN
 - **Projectivy** on the Android TV / Google TV, if you want the plugin
-- **Jellyfin** and/or **Jellyseerr/Seerr** only when you're ready for your own titles — demo mode runs with neither
+- **Jellyfin**, **Plex**, and/or **Jellyseerr/Seerr** only when you're ready for your own titles — demo mode runs with none of them
 
 The box is a container on **`:8787`** with a `data/` volume. The plugin lives on the TV.
 
@@ -95,7 +95,7 @@ docker run --name wallpaparr --restart unless-stopped -d -p 8787:8787 \
   ghcr.io/imanunator/wallpaparr:latest
 ```
 
-Open **http://127.0.0.1:8787** on the host. Tonight is the home page — it seeds a demo catalog of license-safe stills first, no Jellyfin required.
+Open **http://127.0.0.1:8787** on the host. Tonight is the home page — it seeds a demo catalog of license-safe stills first, no media server required.
 
 - `PUBLIC_BASE_URL` (and the plugin's Server URL) needs to be a LAN IP or hostname the TV can reach — not `127.0.0.1`.
 - No login by default (fine for a home LAN). To lock it down, set `WALLPAPARR_AUTH_USER` / `WALLPAPARR_AUTH_PASSWORD` — see [docs/API.md](docs/API.md).
@@ -108,8 +108,8 @@ Compose, building from source, separate-disk storage, offline verify: **[docs/IN
 
 When the demo stills get old:
 
-1. **Settings** — Jellyfin URL + API key, and/or Jellyseerr URL + API key. Hit **Test** next to each before you walk away.
-2. **Generate** — Source `Jellyfin` (or `Jellyseerr`, or `All configured`), pick a layout, **Run batch**. That pulls titles and bakes a wallpaper for each.
+1. **Settings** — Jellyfin URL + API key, Plex URL + token, and/or Jellyseerr URL + API key. Hit **Test** next to each before you walk away.
+2. **Generate** — Source `Jellyfin`, `Plex` (or `Jellyseerr`, or `All configured`), pick a layout, **Run batch**. That pulls titles and bakes a wallpaper for each.
 3. **Gallery** — your artwork, ratings, and watch status should be there.
 4. Optional: check **Bake parallax / motion VIDEO** on the batch (or bake later per title) if you want looping motion instead of stills.
 5. Optional: **Settings → Cron / batch** so new/trending titles generate themselves. A bad cron expression is rejected on save instead of quietly never running.
@@ -121,6 +121,7 @@ That's the loop: connect → generate → maybe schedule. Editor, taste mix, and
 ## How it picks and bakes
 
 - **Jellyfin** pulls straight from your library — unwatched, continue watching, newly added, weighted by your taste mix.
+- **Plex** pulls movies and shows from every movie/TV library (or only the section ids you list), with the same watch badges. Click-through uses Plex's own `plex://play` deep link, so the Plex app opens the exact pre-play page.
 - **Jellyseerr** adds titles you don't have yet: Trending, Popular movies/series, or Upcoming — pick the category per batch or per cron job. Upcoming titles get an "Upcoming" badge since they're not watchable yet.
 - Every title always gets a static JPEG first. Turn on **Bake parallax / motion VIDEO** and it also renders a short H.264 loop — the artwork pans/zooms gently while the title, rating, and badges stay locked in place. Projectivy plays the VIDEO when one exists and falls back to the JPEG otherwise, so baking is always optional, never required.
 
@@ -130,7 +131,7 @@ That's the loop: connect → generate → maybe schedule. Editor, taste mix, and
 
 1. **Test before you automate.** Run **Generate** by hand a couple of times with a small `limit` (5–10), trying different **motion presets** in Settings, and check the result in Gallery/Tonight. Pick what looks good on your TV *before* scheduling — re-baking hundreds of titles because a preset looked wrong wastes time.
 2. **Then add cron schedules** (Settings → Cron / batch). A reasonable starting point is three:
-   - **Jellyfin**, nightly — `skip_existing` on, `refresh_status` on (keeps watched/continue-watching badges current), `cleanup` on to drop titles removed from your library.
+   - **Jellyfin** (and/or **Plex**), nightly — `skip_existing` on, `refresh_status` on (keeps watched/continue-watching badges current), `cleanup` on to drop titles removed from your library.
    - **Jellyseerr — Trending**, daily — `Full refresh every run` on, since what's trending changes day to day.
    - **Jellyseerr — Upcoming**, weekly is usually enough — release dates don't move that often.
 3. Only bake motion on schedules where you actually want the loop; it's the slow, CPU-heavy step, so leave it off elsewhere and schedule the ones that do bake it overnight (e.g. `0 4 * * *`) when nobody minds the CPU load.
@@ -160,11 +161,11 @@ Package `com.imanunator.wallpaparr`. Pick modes and deep links: [docs/PROJECTIVY
 | [Reference](docs/REFERENCE.md) | Feature list, architecture, API contract, Wallpaparr vs SeerChannel |
 | [Install](docs/INSTALL.md) | Docker/Compose, separate-disk gallery, plugin, tvbgsuite migration |
 | [Release / GHCR / APK](docs/RELEASE.md) | How `:latest` publishes, tagging, permissions |
-| [Verify](docs/VERIFY.md) | Demo mode with no Jellyfin and no GHCR |
+| [Verify](docs/VERIFY.md) | Demo mode with no media server and no GHCR |
 | [API](docs/API.md) | Status contract plus editor/ops endpoints |
 | [Motion](docs/MOTION.md) | IMAGE vs VIDEO, parallax bake, intensity |
 | [Overlays](docs/OVERLAYS.md) | Clock / HA / news hooks |
-| [Projectivy plugin](docs/PROJECTIVY.md) | Pick modes, UUID, deep links (Moonfin, SeerrTV, browser fallback) |
+| [Projectivy plugin](docs/PROJECTIVY.md) | Pick modes, UUID, deep links (Plex, Moonfin, SeerrTV, browser fallback) |
 | [Changelog](CHANGELOG.md) | Version history |
 
 ---

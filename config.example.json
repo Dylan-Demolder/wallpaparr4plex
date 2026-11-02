@@ -33,6 +33,11 @@
     "api_key": "YOUR_JELLYFIN_API_KEY",
     "user_id": ""
   },
+  "plex": {
+    "url": "http://192.168.1.10:32400",
+    "api_key": "YOUR_PLEX_TOKEN",
+    "library_ids": ""
+  },
   "jellyseerr": {
     "url": "http://192.168.1.10:5055",
     "api_key": "YOUR_SEERR_API_KEY",

@@ -20,7 +20,7 @@ CATALOG_PATH = Path(os.environ.get("SUITE_CATALOG", DATA_DIR / "catalog.json"))
 # as "keep the stored key". A blank field still *clears* the stored key; a new
 # non-blank value replaces it. ``None`` / omitted also keeps the stored key.
 REDACTED_API_KEY = "********"
-_PROVIDER_SECTIONS = ("jellyfin", "jellyseerr", "tmdb", "omdb")
+_PROVIDER_SECTIONS = ("jellyfin", "plex", "jellyseerr", "tmdb", "omdb")
 
 
 def ensure_dirs() -> None:
