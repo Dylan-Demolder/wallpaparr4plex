@@ -94,6 +94,7 @@ class MotionProfile:
     # silently encode 30 fps / 12s / fly-in-off while Settings says 24/15/on.
     style: str = "parallax"
     quality: str = "light"
+    crf: int | None = None
     intensity: float = INTENSITY_PRESETS["balanced"]
     duration: float = _DEFAULT_LOOP_SECONDS
     fps: int = _DEFAULT_FPS
@@ -203,6 +204,13 @@ def profile_from_settings(settings) -> MotionProfile:
     duration_f = min(24.0, max(2.0, duration_f))
     fps = int(getattr(settings, "motion_fps", None) or _DEFAULT_FPS)
     fps = min(30, max(12, fps))
+    raw_crf = getattr(settings, "motion_crf", None)
+    crf = None
+    if raw_crf not in (None, "", 0, "0"):
+        try:
+            crf = min(40, max(18, int(raw_crf)))
+        except (TypeError, ValueError):
+            crf = None
     style = str(getattr(settings, "motion_style", None) or "parallax")
     leak = bool(getattr(settings, "light_leak", True))
     edge_fade = bool(getattr(settings, "motion_edge_fade", True))
@@ -214,6 +222,7 @@ def profile_from_settings(settings) -> MotionProfile:
     return MotionProfile(
         style=style,
         quality=quality,
+        crf=crf,
         intensity=intensity,
         duration=duration_f,
         fps=fps,
@@ -500,6 +509,18 @@ def encoder_args(profile: MotionProfile, *, frames: int | None = None) -> list[s
         f"keyint={gop}:min-keyint={gop}:scenecut=0:bframes=0:"
         f"open-gop=0:ref=1:weightp=0"
     )
+    # Constant quality when a CRF is configured: fixed bitrate wastes ~2× on
+    # slow parallax cards, where most of the frame is static. VBV headroom is
+    # irrelevant without a target rate, so those flags are dropped.
+    rate_args = (
+        ["-crf", str(profile.crf)]
+        if profile.crf
+        else [
+            "-b:v", profile.bitrate,
+            "-maxrate", f"{(avg * 2) // 1000}k",
+            "-bufsize", f"{max(avg * 4, 8_000_000) // 1000}k",
+        ]
+    )
     return [
         "-fps_mode", "cfr",
         "-frames:v", str(nframes),
@@ -510,9 +531,7 @@ def encoder_args(profile: MotionProfile, *, frames: int | None = None) -> list[s
         "-level", "4.0",
         "-bf", "0",
         "-g", str(gop),
-        "-b:v", profile.bitrate,
-        "-maxrate", f"{(avg * 2) // 1000}k",
-        "-bufsize", f"{max(avg * 4, 8_000_000) // 1000}k",
+        *rate_args,
         "-x264-params", params,
         "-movflags", "+faststart",
         "-an",

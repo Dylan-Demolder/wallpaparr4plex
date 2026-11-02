@@ -181,6 +181,10 @@ class AppSettings(BaseModel):
     motion_intensity: float = 0.55
     motion_duration: float | None = 15.0
     motion_fps: int = 24
+    # Constant-quality x264 instead of the bitrate tiers. Smaller files for
+    # slow parallax cards (a 15s 1080p loop lands near 2.5 MB at 30 rather
+    # than 5.3 MB at the 2800k "light" target). None keeps the legacy bitrate.
+    motion_crf: int | None = None
     overwrite_existing: bool = False
     editor_theme: str = "cinema"
     motion_preset: str = "balanced"
